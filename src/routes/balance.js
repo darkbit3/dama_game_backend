@@ -30,14 +30,16 @@ router.post('/',
   [
     body('token').notEmpty().withMessage('token is required'),
     body('phone').notEmpty().withMessage('phone is required'),
-    body('username').notEmpty().withMessage('username is required'),
   ],
   validate,
   async (req, res, next) => {
     try {
-      const { token, phone, username } = req.body;
-      const balance = await fetchOwnerBalance(token, phone, username);
-      ok(res, { balance });   // balance may be null — frontend handles it
+      const { token, phone } = req.body;
+      const data = await fetchOwnerBalance(token, phone);
+      ok(res, {
+        balance: data ? data.balance : null,
+        username: data ? data.username : null,
+      });
     } catch (err) {
       next(err);
     }

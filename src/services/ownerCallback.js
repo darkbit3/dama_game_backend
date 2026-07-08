@@ -106,12 +106,20 @@ export async function fetchOwnerBalance(tokenStr, phone, username) {
     username,
   });
 
-  if (result && typeof result.balance === 'number') return result.balance;
-  if (result && typeof result.balance === 'string') {
+  if (!result) return null;
+
+  let balance = null;
+  if (typeof result.balance === 'number') {
+    balance = result.balance;
+  } else if (typeof result.balance === 'string') {
     const n = parseInt(result.balance, 10);
-    return isNaN(n) ? null : n;
+    balance = isNaN(n) ? null : n;
   }
-  return null;
+
+  return {
+    balance,
+    username: result.username || null,
+  };
 }
 
 /**
