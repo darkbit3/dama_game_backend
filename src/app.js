@@ -19,10 +19,15 @@ app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, etc.)
+      // Allow requests with no origin (mobile apps, Telegram Mini App, curl, etc.)
       if (!origin) return callback(null, true);
       if (CORS_ORIGINS.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS: origin ${origin} not allowed`));
+      // Log blocked origin in dev
+      if (NODE_ENV === 'development') {
+        console.warn(`CORS blocked: ${origin}`);
+      }
+      // Return proper CORS rejection (not a throw — that causes 500)
+      return callback(null, false);
     },
     credentials: true,
   })
