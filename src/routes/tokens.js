@@ -19,7 +19,7 @@ router.post('/',
     body('key_name').isString().trim().notEmpty().withMessage('key_name is required'),
     body('owner').isString().trim().notEmpty().withMessage('owner is required'),
     body('expires_in_days').optional().isInt({ min: 1 }),
-    body('backend_url').optional({ nullable: true }).isURL({ require_tld: false }).withMessage('Must be a valid URL'),
+    body('backend_url').isURL({ require_tld: false }).withMessage('backend_url is required and must be a valid URL'),
   ],
   validate,
   createToken

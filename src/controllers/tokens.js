@@ -12,7 +12,7 @@ function generateToken() {
 export const listTokens = (req, res, next) => {
   try {
     const tokens = db.prepare(`
-      SELECT id, token, key_name, owner, created_at, expires_at, last_used, is_active
+      SELECT id, token, key_name, owner, backend_url, created_at, expires_at, last_used, is_active
       FROM api_tokens
       ORDER BY created_at DESC
     `).all();
@@ -25,8 +25,8 @@ export const createToken = (req, res, next) => {
   try {
     const { key_name, owner, expires_in_days, backend_url } = req.body;
 
-    if (!key_name || !owner) {
-      return fail(res, 'key_name and owner are required', 400);
+    if (!key_name || !owner || !backend_url) {
+      return fail(res, 'key_name, owner and backend_url are required', 400);
     }
 
     const token     = generateToken();
