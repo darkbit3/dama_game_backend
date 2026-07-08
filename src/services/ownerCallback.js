@@ -89,6 +89,7 @@ export async function callDamaEndpoint(backendUrl, body) {
 /**
  * Fetch real balance from owner's backend for a player.
  * Called on login to get the live balance.
+ * Sends only phone as the identifier — simple and direct.
  *
  * @param {string} tokenStr   raw API token string
  * @param {string} phone
@@ -106,7 +107,10 @@ export async function fetchOwnerBalance(tokenStr, phone, username) {
   });
 
   if (result && typeof result.balance === 'number') return result.balance;
-  if (result && typeof result.balance === 'string') return parseInt(result.balance, 10) || null;
+  if (result && typeof result.balance === 'string') {
+    const n = parseInt(result.balance, 10);
+    return isNaN(n) ? null : n;
+  }
   return null;
 }
 
