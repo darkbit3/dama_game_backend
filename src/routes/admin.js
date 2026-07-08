@@ -1,0 +1,79 @@
+// backend/src/routes/admin.js
+import { Router } from 'express';
+import { body } from 'express-validator';
+import { validate } from '../middleware/validate.js';
+import { requireAdmin } from '../middleware/auth.js';
+import * as ctrl from '../controllers/admin.js';
+import { login, changePassword } from '../controllers/auth.js';
+import { listTokens, createToken, toggleToken, deleteToken } from '../controllers/tokens.js';
+import { grantItem, revokeItem } from '../controllers/items.js';
+
+const router = Router();
+
+// ── Public ─────────────────────────────────────────────────────────────────
+
+// POST /api/admin/login
+router.post('/login',
+  [
+    body('username').isString().trim().notEmpty(),
+    body('password').isString().notEmpty(),
+  ],
+  validate,
+  login
+);
+
+// ── Protected (JWT required) ────────────────────────────────────────────────
+router.use(requireAdmin);
+
+// POST /api/admin/change-password
+router.post('/change-password',
+  [
+    body('currentPassword').isString().notEmpty(),
+    body('newPassword').isString().isLength({ min: 6 }),
+  ],
+  validate,
+  changePassword
+);
+
+// GET /api/admin/stats
+router.get('/stats', ctrl.getStats);
+
+// GET /api/admin/token-users — tokens with their registered players + balances
+router.get('/token-users', ctrl.getTokenUsers);
+
+// GET /api/admin/owner-balances — service fee earnings per token owner
+router.get('/owner-balances', ctrl.getOwnerBalances);
+
+// GET /api/admin/item-stats — purchase counts per item
+router.get('/item-stats', ctrl.getItemStats);
+
+// POST /api/admin/items/grant — grant item to player for free
+router.post('/items/grant',
+  [body('playerId').notEmpty(), body('itemId').notEmpty()],
+  validate,
+  grantItem
+);
+
+// DELETE /api/admin/items/:playerId/:itemId — revoke item from player
+router.delete('/items/:playerId/:itemId', revokeItem);
+
+// GET /api/admin/players
+router.get('/players', ctrl.listAllPlayers);
+
+// DELETE /api/admin/players/demo
+router.delete('/players/demo', ctrl.deleteDemoPlayers);
+
+// POST /api/admin/players/seed
+router.post('/players/seed', ctrl.seedDemoPlayers);
+
+// PATCH /api/admin/players/:id/balance
+router.patch('/players/:id/balance',
+  [
+    body('amount').optional().isInt(),
+    body('balance').optional().isInt({ min: 0 }),
+  ],
+  validate,
+  ctrl.adminAdjustBalance
+);
+
+export default router;
