@@ -39,6 +39,24 @@ app.use(express.urlencoded({ extended: true }));
 app.use(authTimeout);
 app.use('/api', apiRouter);
 
+// Root — health/info page
+app.get('/', (req, res) => {
+  res.json({
+    ok: true,
+    name: 'Dama Game Backend',
+    description: 'Ethiopian Checkers API Server',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health:  '/api/health',
+      players: '/api/players',
+      games:   '/api/games',
+      ai:      '/api/ai',
+    },
+    frontend: 'https://dama-game-6d2b.onrender.com',
+  });
+});
+
 // 404 for unmatched routes
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: `Route not found: ${req.method} ${req.path}` });
