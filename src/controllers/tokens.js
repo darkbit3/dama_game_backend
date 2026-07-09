@@ -81,3 +81,34 @@ export const updateBackendUrl = (req, res, next) => {
     ok(res, updated);
   } catch (err) { next(err); }
 };
+
+// POST /api/admin/tokens/:id/ping
+// Tries to reach the token's backend_url and reports online/offline + latency.
+export const pingTokenBackend = async (req, res, next) => {
+  try {
+    const row = db.prepare('SELECT * FROM api_tokens WHERE id = ?').get(req.params.id);
+    if (!row) return fail(res, 'Token not found', 404);
+
+    const backendUrl = row.backend_url;
+    if (!backendUrl) {
+      return ok(res, { online: false, reason: 'no_backend_url', latencyMs: null });
+    }
+
+    const pingUrl = backendUrl.replace(/\/$/, '') + '/dama';
+    const t0 = Date.now();
+    try {
+      const resp = await fetch(pingUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ping' }),
+        signal: AbortSignal.timeout(5000),
+      });
+      const latencyMs = Date.now() - t0;
+      // Any HTTP response (even 4xx) means the server is reachable
+      return ok(res, { online: true, latencyMs, httpStatus: resp.status });
+    } catch (fetchErr) {
+      const latencyMs = Date.now() - t0;
+      return ok(res, { online: false, reason: fetchErr.message, latencyMs });
+    }
+  } catch (err) { next(err); }
+};

@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { validate } from '../middleware/validate.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { listTokens, createToken, toggleToken, deleteToken, updateBackendUrl } from '../controllers/tokens.js';
+import { listTokens, createToken, toggleToken, deleteToken, updateBackendUrl, pingTokenBackend } from '../controllers/tokens.js';
 
 const router = Router();
 
@@ -36,6 +36,9 @@ router.patch('/:id/backend-url',
   validate,
   updateBackendUrl
 );
+
+// POST   /api/admin/tokens/:id/ping
+router.post('/:id/ping', pingTokenBackend);
 
 // DELETE /api/admin/tokens/:id
 router.delete('/:id', deleteToken);
