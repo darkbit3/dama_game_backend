@@ -23,10 +23,11 @@ router.post(
   async (req, res, next) => {
     try {
       const { token, phone, username, expectedBalance } = req.body;
-      const balance = await fetchOwnerBalance(token, phone, username);
-      if (balance === null) {
+      const result = await fetchOwnerBalance(token, phone, username);
+      if (result === null) {
         return ok(res, { result: 'no', reason: 'Owner backend unavailable' });
       }
+      const balance = result.balance;
       if (Number(balance) === Number(expectedBalance)) {
         return ok(res, { result: 'yes' });
       }
