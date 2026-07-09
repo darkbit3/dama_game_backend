@@ -38,8 +38,9 @@ router.get('/', requireTokenOrAdmin, ctrl.listPlayers);
 // GET /api/players/:id — requires API token or admin JWT
 router.get('/:id', requireTokenOrAdmin, ctrl.getPlayer);
 
-// POST /api/players — open (game client self-registration / upsert)
+// POST /api/players — requires API Token or Admin JWT (saves token owner link)
 router.post('/',
+  requireTokenOrAdmin,
   [
     body('id').notEmpty().withMessage('id is required'),
     body('name').notEmpty().withMessage('name is required'),
