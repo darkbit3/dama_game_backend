@@ -44,6 +44,9 @@ router.get('/token-users', ctrl.getTokenUsers);
 // GET /api/admin/owner-balances — service fee earnings per token owner
 router.get('/owner-balances', ctrl.getOwnerBalances);
 
+// GET /api/admin/owner-transactions — fee transaction log with optional date/token filters
+router.get('/owner-transactions', ctrl.getOwnerTransactions);
+
 // GET /api/admin/connections — verify connectivity to game and owner backends
 router.get('/connections', ctrl.getConnectionsStatus);
 

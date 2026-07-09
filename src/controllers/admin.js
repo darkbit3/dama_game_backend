@@ -197,3 +197,29 @@ export const adminAdjustBalance = async (req, res, next) => {
     next(err);
   }
 };
+
+export const getOwnerTransactions = async (req, res, next) => {
+  try {
+    const { from, to, token_id } = req.query;
+    const conditions = [];
+    const params = [];
+
+    if (token_id) { conditions.push('tot.token_id = ?'); params.push(Number(token_id)); }
+    if (from)     { conditions.push('tot.created_at >= ?'); params.push(Math.floor(new Date(from).getTime() / 1000)); }
+    if (to)       { conditions.push('tot.created_at <= ?'); params.push(Math.floor(new Date(to).getTime() / 1000) + 86399); }
+
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const rows = db.prepare(`
+      SELECT tot.id, tot.token_id, tot.game_id, tot.type, tot.amount, tot.note, tot.created_at,
+             t.owner, t.key_name
+      FROM token_owner_transactions tot
+      JOIN api_tokens t ON t.id = tot.token_id
+      ${where}
+      ORDER BY tot.created_at DESC
+      LIMIT 500
+    `).all(...params);
+
+    ok(res, rows);
+  } catch (err) { next(err); }
+};

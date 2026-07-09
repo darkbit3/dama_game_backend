@@ -127,6 +127,28 @@ export function applySchema() {
       created_at     INTEGER NOT NULL DEFAULT (unixepoch()),
       FOREIGN KEY (game_id) REFERENCES games(id)
     );
+
+    -- Token owner earnings balance (one row per token)
+    CREATE TABLE IF NOT EXISTS token_owner_balances (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id     INTEGER NOT NULL UNIQUE,
+      balance      INTEGER NOT NULL DEFAULT 0,
+      total_earned INTEGER NOT NULL DEFAULT 0,
+      updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      FOREIGN KEY (token_id) REFERENCES api_tokens(id)
+    );
+
+    -- Token owner earnings transaction log
+    CREATE TABLE IF NOT EXISTS token_owner_transactions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id   INTEGER NOT NULL,
+      game_id    TEXT,
+      type       TEXT NOT NULL,
+      amount     INTEGER NOT NULL,
+      note       TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      FOREIGN KEY (token_id) REFERENCES api_tokens(id)
+    );
   `);
 
   // ── Column migrations — idempotent, errors mean column already exists ───────
