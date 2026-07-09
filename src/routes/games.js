@@ -51,6 +51,20 @@ router.post('/:id/moves',
   ctrl.addMove
 );
 
+// POST /api/games/start-bet — register game + deduct bet from token backend
+router.post('/start-bet',
+  [
+    body('gameId').notEmpty().withMessage('gameId is required'),
+    body('playerId').notEmpty().withMessage('playerId is required'),
+    body('phone').notEmpty().withMessage('phone is required'),
+    body('betAmount').isInt({ min: 0 }).withMessage('betAmount must be a non-negative integer'),
+    body('mode').optional().isIn(['ai', 'pvp']),
+    body('player2Id').optional().isString(),
+  ],
+  validate,
+  ctrl.startBet
+);
+
 // POST /api/games/finish-local — save a completed AI or local game
 router.post('/finish-local',
   [

@@ -111,6 +111,22 @@ export function applySchema() {
       draws      INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
+
+    -- Game Bet Log — records each bet deduction callback to the token backend
+    CREATE TABLE IF NOT EXISTS game_bet_log (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id        TEXT    NOT NULL,
+      player_id      TEXT    NOT NULL,
+      phone          TEXT,
+      bet_amount     INTEGER NOT NULL DEFAULT 0,
+      backend_url    TEXT,
+      request_body   TEXT,
+      response_body  TEXT,
+      status         TEXT    NOT NULL DEFAULT 'pending',
+      error          TEXT,
+      created_at     INTEGER NOT NULL DEFAULT (unixepoch()),
+      FOREIGN KEY (game_id) REFERENCES games(id)
+    );
   `);
 
   // ── Column migrations — idempotent, errors mean column already exists ───────
