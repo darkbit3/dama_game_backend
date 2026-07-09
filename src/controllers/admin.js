@@ -65,6 +65,49 @@ export const getOwnerBalances = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+export const getConnectionsStatus = async (req, res, next) => {
+  try {
+    const gameBackend = { status: 'online', url: `${req.protocol}://${req.get('host')}` };
+    const tokens = db.prepare('SELECT id, owner, backend_url, is_active FROM api_tokens').all();
+    const tokenBackends = [];
+
+    for (const t of tokens) {
+      if (!t.backend_url) {
+        tokenBackends.push({ id: t.id, owner: t.owner, url: null, status: 'not_configured' });
+        continue;
+      }
+      try {
+        const checkUrl = t.backend_url.replace(/\/$/, '') + '/dama';
+        const pingRes = await fetch(checkUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get_balance', phone: '0000000000' }),
+          signal: AbortSignal.timeout(2000),
+        });
+        tokenBackends.push({
+          id: t.id,
+          owner: t.owner,
+          url: t.backend_url,
+          status: pingRes.ok ? 'online' : 'error',
+          statusCode: pingRes.status
+        });
+      } catch (err) {
+        tokenBackends.push({
+          id: t.id,
+          owner: t.owner,
+          url: t.backend_url,
+          status: 'offline',
+          error: err.message
+        });
+      }
+    }
+
+    ok(res, { gameBackend, tokenBackends });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const getItemStats = async (req, res, next) => {
   try {
     // Count purchases per item_id from owned_items table
