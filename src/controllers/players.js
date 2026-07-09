@@ -21,6 +21,8 @@ export const getPlayer = async (req, res, next) => {
   }
 };
 
+import { normalizePhone } from '../utils/phone.js';
+
 export const upsertPlayer = async (req, res, next) => {
   try {
     const { id, name, photo, bet, pieceThemeId, isDemo, phone } = req.body;
@@ -40,7 +42,7 @@ export const upsertPlayer = async (req, res, next) => {
       else if (/linux/i.test(rawUa)) lastDevice = 'Linux PC';
     }
 
-    const player = playersService.upsert({ id, name, photo, phone, bet, pieceThemeId, isDemo, lastIp, lastDevice, tokenId: req.apiToken?.id || null });
+    const player = playersService.upsert({ id, name, photo, phone: normalizePhone(phone), bet, pieceThemeId, isDemo, lastIp, lastDevice, tokenId: req.apiToken?.id || null });
     ok(res, player, 200);
   } catch (err) {
     next(err);

@@ -86,6 +86,8 @@ export async function callDamaEndpoint(backendUrl, body) {
   }
 }
 
+import { normalizePhone } from '../utils/phone.js';
+
 /**
  * Fetch real balance from owner's backend for a player.
  * Called on login to get the live balance.
@@ -102,7 +104,7 @@ export async function fetchOwnerBalance(tokenStr, phone, username) {
 
   const result = await callDamaEndpoint(tokenRow.backend_url, {
     action:   'get_balance',
-    phone,
+    phone:    normalizePhone(phone),
     username,
   });
 

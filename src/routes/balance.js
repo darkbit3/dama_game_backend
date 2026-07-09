@@ -26,6 +26,8 @@ const router = Router();
  *  - owner backend unreachable
  * Frontend falls back to the URL ?balance= param in those cases.
  */
+import { normalizePhone } from '../utils/phone.js';
+
 router.post('/',
   [
     body('token').notEmpty().withMessage('token is required'),
@@ -35,7 +37,7 @@ router.post('/',
   async (req, res, next) => {
     try {
       const { token, phone } = req.body;
-      const data = await fetchOwnerBalance(token, phone);
+      const data = await fetchOwnerBalance(token, normalizePhone(phone));
       ok(res, {
         balance: data ? data.balance : null,
         username: data ? data.username : null,

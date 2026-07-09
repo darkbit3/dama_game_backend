@@ -11,6 +11,8 @@ const router = Router();
  * Body: { phone, username, expectedBalance }
  * Returns { result: 'yes' } if balance matches, otherwise { result: 'no', reason }.
  */
+import { normalizePhone } from '../utils/phone.js';
+
 router.post(
   '/',
   [
@@ -21,7 +23,8 @@ router.post(
   validate,
   (req, res) => {
     const { phone, username, expectedBalance } = req.body;
-    const row = db.prepare('SELECT balance FROM players WHERE phone = ? AND name = ?').get(phone, username);
+    const normalizedPhone = normalizePhone(phone);
+    const row = db.prepare('SELECT balance FROM players WHERE phone = ? AND name = ?').get(normalizedPhone, username);
     if (!row) {
       return ok(res, { result: 'no', reason: 'User not found in local DB' });
     }

@@ -11,6 +11,8 @@ const router = Router();
  * Body: { token, phone, username, expectedBalance }
  * Returns { result: 'yes'|'no', reason? }
  */
+import { normalizePhone } from '../utils/phone.js';
+
 router.post(
   '/',
   [
@@ -23,7 +25,7 @@ router.post(
   async (req, res, next) => {
     try {
       const { token, phone, username, expectedBalance } = req.body;
-      const result = await fetchOwnerBalance(token, phone, username);
+      const result = await fetchOwnerBalance(token, normalizePhone(phone), username);
       if (result === null) {
         return ok(res, { result: 'no', reason: 'Owner backend unavailable' });
       }
