@@ -2,46 +2,88 @@
 // POST /api/player-balance
 //
 // Called by the frontend immediately on load.
-// Looks up the token's backend_url, then calls:
-//   POST {backend_url}/dama  { action:'get_balance', phone, username }
-// and returns the balance back to the frontend.
 //
-// No auth middleware — the token is validated inside fetchOwnerBalance.
+// Security model
+// ──────────────
+// The frontend never sends a raw phone number.  Instead system-backend mints a
+// short-lived signed JWT (the "launch token") that contains { phone, username,
+// balance, gameId }.  The frontend forwards that opaque string here along with
+// its Dama API token.  This backend verifies the JWT signature (DAMA_LAUNCH_SECRET)
+// and extracts the phone/username — the browser never sees either value in plain
+// text.
+//
+// Flow:
+//   1. Verify `launch` JWT with verifyLaunchToken() → { phone, username, … }
+//   2. Call existing fetchOwnerBalance(token, phone, username) — unchanged.
+//   3. Return { balance, username } to the frontend.
 
 import { Router } from 'express';
 import { body } from 'express-validator';
+import jwt from 'jsonwebtoken';
 import { validate } from '../middleware/validate.js';
 import { fetchOwnerBalance } from '../services/ownerCallback.js';
-import { ok } from '../utils/response.js';
+import { verifyLaunchToken } from '../utils/launchToken.js';
+import { ok, fail } from '../utils/response.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = Router();
 
 /**
  * POST /api/player-balance
- * Body: { token, phone, username }
- * Response: { balance: number | null }
+ *
+ * Body: { token, launch }
+ *   token  — Dama API token string (identifies which partner backend to query)
+ *   launch — short-lived signed JWT from system-backend containing phone/username
+ *
+ * Response: { balance: number | null, username: string | null }
  *
  * balance is null when:
  *  - token has no backend_url configured
  *  - owner backend unreachable
  * Frontend falls back to the URL ?balance= param in those cases.
+ *
+ * 401 when launch token is missing, invalid, or expired.
  */
-import { normalizePhone } from '../utils/phone.js';
-
 router.post('/',
   [
     body('token').notEmpty().withMessage('token is required'),
-    body('phone').notEmpty().withMessage('phone is required'),
+    body('launch').notEmpty().withMessage('launch token is required'),
   ],
   validate,
   async (req, res, next) => {
     try {
-      const { token, phone } = req.body;
-      const data = await fetchOwnerBalance(token, normalizePhone(phone));
+      const { token, launch } = req.body;
+
+      // ── 1. Verify launch token ─────────────────────────────────────────────
+      let claims;
+      try {
+        claims = verifyLaunchToken(launch);
+      } catch (err) {
+        if (err instanceof jwt.TokenExpiredError) {
+          return fail(res, 'Launch token has expired', 401);
+        }
+        // JsonWebTokenError, missing secret, etc.
+        return fail(res, 'Invalid launch token', 401);
+      }
+
+      if (!claims) {
+        // null → missing/empty string or missing required claims
+        return fail(res, 'Invalid launch token', 401);
+      }
+
+      // ── 2. Fetch balance from owner backend using server-extracted values ──
+      // phone and username come exclusively from the verified JWT — the client
+      // has no way to supply or tamper with them.
+      const { phone, username } = claims;
+      const data = await fetchOwnerBalance(token, normalizePhone(phone), username);
+
+      // ── 3. Return balance to frontend ──────────────────────────────────────
+      // NOTE: phone is intentionally NOT included in this response.
       ok(res, {
-        balance: data ? data.balance : null,
+        balance:  data ? data.balance  : null,
         username: data ? data.username : null,
       });
+
     } catch (err) {
       next(err);
     }
