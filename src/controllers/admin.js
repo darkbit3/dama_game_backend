@@ -224,3 +224,65 @@ export const getOwnerTransactions = async (req, res, next) => {
     ok(res, rows);
   } catch (err) { next(err); }
 };
+
+/**
+ * GET /api/admin/pending-callbacks
+ * Query params (all optional):
+ *   status   — 'pending' | 'failed' | 'delivered'  (default: pending + failed)
+ *   token_id — filter by token
+ *   game_id  — filter by game
+ *   limit    — default 200
+ *
+ * Returns outbox rows so an operator can see what never delivered.
+ */
+export const getPendingCallbacks = async (req, res, next) => {
+  try {
+    const { status, token_id, game_id, limit = 200 } = req.query;
+    const conditions = [];
+    const params     = [];
+
+    if (status) {
+      conditions.push('poc.status = ?');
+      params.push(status);
+    } else {
+      // Default: show everything that isn't cleanly delivered
+      conditions.push("poc.status IN ('pending','failed')");
+    }
+
+    if (token_id) {
+      conditions.push('poc.token_id = ?');
+      params.push(Number(token_id));
+    }
+
+    if (game_id) {
+      conditions.push('poc.game_id = ?');
+      params.push(game_id);
+    }
+
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    params.push(Math.min(Number(limit), 500));
+
+    const rows = db.prepare(`
+      SELECT
+        poc.id, poc.token_id, poc.game_id, poc.action,
+        poc.payload_json, poc.attempts, poc.last_error,
+        poc.status, poc.created_at, poc.updated_at,
+        t.owner, t.key_name, t.backend_url
+      FROM pending_owner_callbacks poc
+      LEFT JOIN api_tokens t ON t.id = poc.token_id
+      ${where}
+      ORDER BY poc.created_at DESC, poc.id DESC
+      LIMIT ?
+    `).all(...params);
+
+    // Parse payload_json for readability — keep raw string as fallback
+    const data = rows.map(row => {
+      let payload = row.payload_json;
+      try { payload = JSON.parse(row.payload_json); } catch { /* keep raw */ }
+      return { ...row, payload_json: undefined, payload };
+    });
+
+    ok(res, data);
+  } catch (err) { next(err); }
+};

@@ -149,6 +149,23 @@ export function applySchema() {
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       FOREIGN KEY (token_id) REFERENCES api_tokens(id)
     );
+
+    -- Durable outbox for owner-backend financial callbacks.
+    -- Rows are written BEFORE every HTTP call to the partner /dama endpoint.
+    -- The retry worker reads rows with status='pending' and attempts < max.
+    CREATE TABLE IF NOT EXISTS pending_owner_callbacks (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id     INTEGER NOT NULL,
+      game_id      TEXT,
+      action       TEXT    NOT NULL,
+      payload_json TEXT    NOT NULL,
+      attempts     INTEGER NOT NULL DEFAULT 0,
+      last_error   TEXT,
+      status       TEXT    NOT NULL DEFAULT 'pending',
+      created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      FOREIGN KEY (token_id) REFERENCES api_tokens(id)
+    );
   `);
 
   // ── Column migrations — idempotent, errors mean column already exists ───────

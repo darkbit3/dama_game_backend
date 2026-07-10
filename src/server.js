@@ -6,12 +6,16 @@ import { attachWsServer } from './ws/wsServer.js';
 import { PORT } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { seedAiBots } from './utils/seedAiBots.js';
+import { startRetryWorker, stopRetryWorker } from './services/retryWorker.js';
 
 // Run DB migrations (idempotent)
 runMigrations();
 
 // Seed AI bots if fewer than 15 exist
 seedAiBots();
+
+// Start durable-callback retry worker
+startRetryWorker();
 
 // Create HTTP server from Express app
 const server = http.createServer(app);
@@ -28,6 +32,7 @@ server.listen(PORT, () => {
 // Graceful shutdown
 const shutdown = (signal) => {
   logger.info(`${signal} received — shutting down gracefully`);
+  stopRetryWorker();
   server.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);

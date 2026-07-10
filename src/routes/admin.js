@@ -47,6 +47,10 @@ router.get('/owner-balances', ctrl.getOwnerBalances);
 // GET /api/admin/owner-transactions — fee transaction log with optional date/token filters
 router.get('/owner-transactions', ctrl.getOwnerTransactions);
 
+// GET /api/admin/pending-callbacks — outbox reconciliation view (pending + failed rows)
+// Query params: status, token_id, game_id, limit
+router.get('/pending-callbacks', ctrl.getPendingCallbacks);
+
 // GET /api/admin/connections — verify connectivity to game and owner backends
 router.get('/connections', ctrl.getConnectionsStatus);
 

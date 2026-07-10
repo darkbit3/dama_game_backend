@@ -25,6 +25,23 @@ export const runMigrations = () => {
     )
   `);
 
+  // ── Ensure pending_owner_callbacks table exists (older DBs may not have it) ─
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_owner_callbacks (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id     INTEGER NOT NULL,
+      game_id      TEXT,
+      action       TEXT    NOT NULL,
+      payload_json TEXT    NOT NULL,
+      attempts     INTEGER NOT NULL DEFAULT 0,
+      last_error   TEXT,
+      status       TEXT    NOT NULL DEFAULT 'pending',
+      created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      FOREIGN KEY (token_id) REFERENCES api_tokens(id)
+    )
+  `);
+
   // ── Add running_balance column to token_owner_transactions (idempotent) ───
   // This stores the cumulative owner balance AFTER each transaction — makes
   // the transaction log self-contained for display purposes.

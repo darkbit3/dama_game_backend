@@ -2,7 +2,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
-import { CORS_ORIGINS, NODE_ENV } from './config/env.js';
+import { CORS_ORIGINS, NODE_ENV, FRONTEND_URL } from './config/env.js';
 import apiRouter from './routes/index.js';
 import { authTimeout } from './middleware/authTimeout.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -58,7 +58,7 @@ app.get('/', (req, res) => {
       games:   '/api/games',
       ai:      '/api/ai',
     },
-    frontend: 'https://dama-game-6d2b.onrender.com',
+    frontend: FRONTEND_URL,
   });
 });
 
