@@ -3,7 +3,7 @@ import { WebSocketServer } from 'ws';
 import db from '../db/database.js';
 import * as playersService from '../services/players.js';
 import * as gamesService from '../services/games.js';
-import { settleWin, settleDraw } from '../services/settlement.js';
+import { settleWin, settleDraw, settleAiWin, settleAiDraw } from '../services/settlement.js';
 import { notifyBetPlaced, getTokenIdForPlayer } from '../services/ownerCallback.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -323,19 +323,51 @@ export const attachWsServer = (httpServer) => {
 
           gamesService.finish(gameId, { winnerId, durationSec, moveCount });
 
+          // Determine if this is an AI game (one of the players is_ai = 1)
+          const p1IsAi = db.prepare('SELECT is_ai FROM players WHERE id = ?').get(game.player1_id)?.is_ai === 1;
+          const p2IsAi = game.player2_id
+            ? db.prepare('SELECT is_ai FROM players WHERE id = ?').get(game.player2_id)?.is_ai === 1
+            : false;
+          const isAiGame = p1IsAi || p2IsAi;
+
+          let settlement = {};
           if (winnerId) {
             const loserId = game.player1_id === winnerId ? game.player2_id : game.player1_id;
-            settleWin(winnerId, loserId, game);
+            if (isAiGame) {
+              settlement = settleAiWin(winnerId, loserId, game);
+            } else {
+              settlement = settleWin(winnerId, loserId, game);
+            }
           } else {
-            settleDraw(game);
+            // Draw
+            if (isAiGame) {
+              // Find the human player
+              const humanId = p1IsAi ? game.player2_id : game.player1_id;
+              settlement = settleAiDraw(humanId, game);
+            } else {
+              settlement = settleDraw(game);
+            }
           }
 
           broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(game.player1_id) });
-          broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(game.player2_id) });
+          if (game.player2_id) {
+            broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(game.player2_id) });
+          }
 
-          const payload = { type: GAME_OVER, winnerId, reason };
+          // Include settlement details in GAME_OVER so the frontend can display winnings
+          const payload = {
+            type: GAME_OVER,
+            winnerId,
+            reason,
+            settlement: {
+              winnerPayout:  settlement.winnerPayout  ?? 0,
+              fee:           settlement.fee           ?? 0,
+              refund:        settlement.refund        ?? 0,
+              ownerDelta:    settlement.ownerDelta    ?? 0,
+            },
+          };
           const s1 = connections.get(game.player1_id);
-          const s2 = connections.get(game.player2_id);
+          const s2 = game.player2_id ? connections.get(game.player2_id) : null;
           if (s1) send(s1, payload);
           if (s2) send(s2, payload);
           break;
@@ -350,16 +382,41 @@ export const attachWsServer = (httpServer) => {
 
           const winnerId = game.player1_id === playerId ? game.player2_id : game.player1_id;
           gamesService.finish(gameId, { winnerId, durationSec: 0, moveCount: 0 });
-          settleWin(winnerId, playerId, game);
+
+          // Route to correct settler based on game type
+          const p1IsAiR = db.prepare('SELECT is_ai FROM players WHERE id = ?').get(game.player1_id)?.is_ai === 1;
+          const p2IsAiR = game.player2_id
+            ? db.prepare('SELECT is_ai FROM players WHERE id = ?').get(game.player2_id)?.is_ai === 1
+            : false;
+          const isAiGameR = p1IsAiR || p2IsAiR;
+
+          let resignSettlement = {};
+          if (isAiGameR) {
+            resignSettlement = settleAiWin(winnerId, playerId, game);
+          } else {
+            resignSettlement = settleWin(winnerId, playerId, game);
+          }
 
           broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(game.player1_id) });
-          broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(game.player2_id) });
+          if (game.player2_id) {
+            broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(game.player2_id) });
+          }
 
-          const payload = { type: GAME_OVER, winnerId, reason: 'Opponent resigned' };
-          const s1 = connections.get(game.player1_id);
-          const s2 = connections.get(game.player2_id);
-          if (s1) send(s1, payload);
-          if (s2) send(s2, payload);
+          const resignPayload = {
+            type: GAME_OVER,
+            winnerId,
+            reason: 'Opponent resigned',
+            settlement: {
+              winnerPayout: resignSettlement.winnerPayout ?? 0,
+              fee:          resignSettlement.fee          ?? 0,
+              refund:       resignSettlement.refund       ?? 0,
+              ownerDelta:   resignSettlement.ownerDelta   ?? 0,
+            },
+          };
+          const rs1 = connections.get(game.player1_id);
+          const rs2 = game.player2_id ? connections.get(game.player2_id) : null;
+          if (rs1) send(rs1, resignPayload);
+          if (rs2) send(rs2, resignPayload);
           break;
         }
 
@@ -403,13 +460,34 @@ export const attachWsServer = (httpServer) => {
             durationSec: 0,
             moveCount: freshGame.moves.length,
           });
-          settleWin(winnerId, myId, freshGame);
+
+          // Route to correct settler
+          const dp1IsAi = db.prepare('SELECT is_ai FROM players WHERE id = ?').get(freshGame.player1_id)?.is_ai === 1;
+          const dp2IsAi = freshGame.player2_id
+            ? db.prepare('SELECT is_ai FROM players WHERE id = ?').get(freshGame.player2_id)?.is_ai === 1
+            : false;
+          const isAiGameD = dp1IsAi || dp2IsAi;
+          const dcSettlement = isAiGameD
+            ? settleAiWin(winnerId, myId, freshGame)
+            : settleWin(winnerId, myId, freshGame);
 
           const winWs = connections.get(winnerId);
-          if (winWs) send(winWs, { type: GAME_OVER, winnerId, reason: 'Opponent disconnected' });
+          if (winWs) send(winWs, {
+            type: GAME_OVER,
+            winnerId,
+            reason: 'Opponent disconnected',
+            settlement: {
+              winnerPayout: dcSettlement.winnerPayout ?? 0,
+              fee:          dcSettlement.fee          ?? 0,
+              refund:       dcSettlement.refund       ?? 0,
+              ownerDelta:   dcSettlement.ownerDelta   ?? 0,
+            },
+          });
 
           broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(activeGame.player1_id) });
-          broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(activeGame.player2_id) });
+          if (activeGame.player2_id) {
+            broadcast({ type: SERVER_PLAYER_UPDATED, player: playersService.getById(activeGame.player2_id) });
+          }
         }, 15_000);
 
         disconnectTimers.set(myId, timer);

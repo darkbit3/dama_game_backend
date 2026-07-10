@@ -1,4 +1,3 @@
-// backend/src/routes/games.js
 import { Router } from 'express';
 import { body } from 'express-validator';
 import { validate } from '../middleware/validate.js';
@@ -65,7 +64,7 @@ router.post('/start-bet',
   ctrl.startBet
 );
 
-// POST /api/games/finish-local — save a completed AI or local game
+// POST /api/games/finish-local — save a completed no-bet AI or local game (stats only)
 router.post('/finish-local',
   [
     body('player1Id').notEmpty().withMessage('player1Id is required'),
@@ -78,6 +77,22 @@ router.post('/finish-local',
   ],
   validate,
   ctrl.finishLocal
+);
+
+// POST /api/games/finish-ai-bet — settle a real-bet AI game (financial settlement + owner callback)
+// Call this after start-bet when the AI game ends.
+// Body: { gameId, humanId, aiId, result: 'win'|'loss'|'draw', durationSec?, moveCount? }
+router.post('/finish-ai-bet',
+  [
+    body('gameId').notEmpty().withMessage('gameId is required'),
+    body('humanId').notEmpty().withMessage('humanId is required'),
+    body('aiId').notEmpty().withMessage('aiId is required'),
+    body('result').isIn(['win','loss','draw']).withMessage('result must be win, loss, or draw'),
+    body('durationSec').optional().isInt({ min: 0 }),
+    body('moveCount').optional().isInt({ min: 0 }),
+  ],
+  validate,
+  ctrl.finishAiBet
 );
 
 export default router;

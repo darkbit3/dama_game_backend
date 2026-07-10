@@ -1,5 +1,6 @@
 import * as gamesService from '../services/games.js';
 import * as playersService from '../services/players.js';
+import { settleAiWin, settleAiDraw } from '../services/settlement.js';
 import { ok, fail } from '../utils/response.js';
 import db from '../db/database.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -60,9 +61,11 @@ export const addMove = async (req, res, next) => {
 
 /**
  * POST /api/games/finish-local
- * Records a completed AI or local game with a unique ID.
+ * Records a completed AI or local (no-bet) game.
  * Body: { mode, player1Id, player2Id?, winnerId?, result, durationSec, moveCount }
  *   result: 'win' | 'loss' | 'draw'  (from player1's perspective)
+ *
+ * NOTE: For AI games WITH a real bet, use POST /api/games/finish-ai-bet instead.
  */
 export const finishLocal = async (req, res, next) => {
   try {
@@ -71,10 +74,8 @@ export const finishLocal = async (req, res, next) => {
     if (!player1Id || !result) return fail(res, 'player1Id and result required', 400);
     if (!['win','loss','draw'].includes(result)) return fail(res, 'result must be win, loss, or draw', 400);
 
-    // Create the game record
+    // Create the game record (always betAmount=0 for finish-local)
     const game = gamesService.create({ mode: mode || 'ai', player1Id, player2Id: player2Id || null, betAmount: 0 });
-
-    // Finish it immediately
     gamesService.finish(game.id, { winnerId: winnerId || null, durationSec, moveCount });
 
     // Record result for player1
@@ -82,7 +83,6 @@ export const finishLocal = async (req, res, next) => {
 
     // Record inverse result for player2 only if they are a real DB player
     if (player2Id) {
-      // Verify player2 actually exists in DB (not an AI bot ID)
       const p2 = playersService.getById(player2Id);
       if (p2) {
         const p2Result = result === 'win' ? 'loss' : result === 'loss' ? 'win' : 'draw';
@@ -92,6 +92,91 @@ export const finishLocal = async (req, res, next) => {
 
     const finished = gamesService.getById(game.id);
     ok(res, finished, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/games/finish-ai-bet
+ *
+ * Records a completed AI game that had a real bet, runs full financial settlement,
+ * updates the token owner balance, and sends callbacks to the token backend.
+ *
+ * Body:
+ * {
+ *   gameId:      string,   // the game ID created by start-bet
+ *   humanId:     string,   // the real player's ID
+ *   aiId:        string,   // the AI bot's player ID
+ *   result:      'win' | 'loss' | 'draw',  // from the HUMAN player's perspective
+ *   durationSec: number,   // optional
+ *   moveCount:   number,   // optional
+ * }
+ *
+ * Settlement logic:
+ *   win  (human wins) → human credited pot−10%, owner balance −(bet−fee)
+ *   loss (AI wins)    → human gets nothing,    owner balance +bet +fee
+ *   draw              → human refunded bet−5%, owner balance +totalFee
+ *
+ * Response: { game, settlement }
+ *   settlement.winnerPayout  — amount added to human's balance (0 on loss)
+ *   settlement.fee           — 10%/5% commission
+ *   settlement.refund        — refund on draw
+ *   settlement.ownerDelta    — net change to owner balance (can be negative)
+ */
+export const finishAiBet = async (req, res, next) => {
+  try {
+    const {
+      gameId,
+      humanId,
+      aiId,
+      result,
+      durationSec = 0,
+      moveCount   = 0,
+    } = req.body;
+
+    if (!gameId)  return fail(res, 'gameId is required',  400);
+    if (!humanId) return fail(res, 'humanId is required', 400);
+    if (!aiId)    return fail(res, 'aiId is required',    400);
+    if (!['win', 'loss', 'draw'].includes(result)) {
+      return fail(res, 'result must be win, loss, or draw', 400);
+    }
+
+    // Load or create game
+    let game = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
+    if (!game) {
+      return fail(res, `Game ${gameId} not found. Call start-bet first.`, 404);
+    }
+    if (game.status === 'finished') {
+      return fail(res, 'Game already finished', 409);
+    }
+
+    // Determine winner DB id
+    const winnerId = result === 'win' ? humanId : result === 'loss' ? aiId : null;
+    gamesService.finish(gameId, { winnerId, durationSec, moveCount });
+
+    // Reload with fresh bet_amount
+    const freshGame = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
+
+    let settlement = {};
+    if (result === 'draw') {
+      settlement = settleAiDraw(humanId, freshGame);
+    } else {
+      settlement = settleAiWin(winnerId, result === 'win' ? aiId : humanId, freshGame);
+    }
+
+    const updatedPlayer = playersService.getById(humanId);
+    ok(res, {
+      game:       gamesService.getById(gameId),
+      player:     updatedPlayer,
+      settlement: {
+        result,
+        winnerPayout: settlement.winnerPayout ?? 0,
+        fee:          settlement.fee          ?? 0,
+        refund:       settlement.refund       ?? 0,
+        ownerDelta:   settlement.ownerDelta   ?? 0,
+      },
+    }, 200);
   } catch (err) {
     next(err);
   }

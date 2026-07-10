@@ -11,6 +11,13 @@
 //   action: 'loss'         → { action, phone, username, playerId, amount, fee, gameId }
 //   action: 'refund'       → { action, phone, username, playerId, amount, fee, gameId }
 //
+//   action: 'owner_fee'    → { action, amount, type, gameId, humanPlayerId? }
+//                            Notifies owner backend of their commission/profit/loss.
+//                            amount > 0 = owner earns, amount < 0 = owner pays out.
+//                            type: 'pvp_win_fee' | 'pvp_draw_fee' |
+//                                  'ai_win_fee'  | 'ai_profit' |
+//                                  'ai_loss'     | 'ai_draw_fee'
+//
 // Failures are logged but never crash the game flow.
 
 import db from '../db/database.js';
@@ -207,4 +214,36 @@ export async function notifyDrawRefund(tokenId, { player1Id, player2Id, refund, 
       gameId,
     }),
   ]);
+}
+
+/**
+ * Notify owner backend of their commission / profit / loss for a game.
+ *
+ * This is the key callback that tells the token owner's server how much
+ * they earned or paid out for a game.
+ *
+ * Body sent to {backend_url}/dama:
+ * {
+ *   action:         'owner_fee',
+ *   amount:         number,     // positive = owner earns, negative = owner pays out
+ *   type:           string,     // 'pvp_win_fee' | 'pvp_draw_fee' | 'ai_win_fee' |
+ *                               //  'ai_profit'  | 'ai_loss'      | 'ai_draw_fee'
+ *   gameId:         string,
+ *   humanPlayerId?: string      // set for AI games only
+ * }
+ *
+ * @param {number} tokenId
+ * @param {{ amount: number, type: string, gameId: string, humanPlayerId?: string }} opts
+ */
+export async function notifyOwnerFee(tokenId, { amount, type, gameId, humanPlayerId }) {
+  const backendUrl = getBackendUrl(tokenId);
+  if (!backendUrl) return;
+
+  await callDamaEndpoint(backendUrl, {
+    action:  'owner_fee',
+    amount,
+    type,
+    gameId,
+    ...(humanPlayerId ? { humanPlayerId } : {}),
+  });
 }
