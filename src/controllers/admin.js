@@ -81,7 +81,7 @@ export const getConnectionsStatus = async (req, res, next) => {
         const pingRes = await fetch(checkUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get_balance', phone: '0000000000' }),
+          body: JSON.stringify({ action: 'get_balance', phone: '0000000000', token: t.token }),
           signal: AbortSignal.timeout(2000),
         });
         tokenBackends.push({

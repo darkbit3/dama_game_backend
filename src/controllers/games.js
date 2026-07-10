@@ -131,6 +131,7 @@ export const finishAiBet = async (req, res, next) => {
       humanId,
       aiId,
       result,
+      betAmount,        // optional — patch game row if bet_amount is 0
       durationSec = 0,
       moveCount   = 0,
     } = req.body;
@@ -142,20 +143,27 @@ export const finishAiBet = async (req, res, next) => {
       return fail(res, 'result must be win, loss, or draw', 400);
     }
 
-    // Load or create game
+    // Load game
     let game = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
-    if (!game) {
-      return fail(res, `Game ${gameId} not found. Call start-bet first.`, 404);
-    }
-    if (game.status === 'finished') {
-      return fail(res, 'Game already finished', 409);
+    if (!game) return fail(res, `Game ${gameId} not found. Call start-bet first.`, 404);
+    if (game.status === 'finished') return fail(res, 'Game already finished', 409);
+
+    // Patch bet_amount if the game row has 0 but client sent a betAmount
+    if (betAmount > 0 && (game.bet_amount === 0 || game.bet_amount === null)) {
+      db.prepare('UPDATE games SET bet_amount = ?, player2_id = COALESCE(player2_id, ?) WHERE id = ?')
+        .run(betAmount, aiId, gameId);
+      game = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
     }
 
-    // Determine winner DB id
+    // Ensure player has token_id linked (patch if missing and token in request)
+    if (req.apiToken?.id) {
+      db.prepare('UPDATE players SET token_id = ? WHERE id = ? AND token_id IS NULL')
+        .run(req.apiToken.id, humanId);
+    }
+
     const winnerId = result === 'win' ? humanId : result === 'loss' ? aiId : null;
     gamesService.finish(gameId, { winnerId, durationSec, moveCount });
 
-    // Reload with fresh bet_amount
     const freshGame = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
 
     let settlement = {};
@@ -223,18 +231,26 @@ export const startBet = async (req, res, next) => {
       return ok(res, { game, betLog: null, skipped: true, reason: 'no bet amount' });
     }
 
-    // ── 2. Resolve token_id → backend_url for this player ──────────────────
+    // ── 2. Resolve token_id → backend_url + token string for this player ─────
     const playerRow  = db.prepare('SELECT token_id, name FROM players WHERE id = ?').get(playerId);
-    const tokenId    = playerRow?.token_id || null;
+    const tokenId    = playerRow?.token_id || req.apiToken?.id || null;
+
+    // If player has no token_id but request has one, link it now
+    if (!playerRow?.token_id && req.apiToken?.id) {
+      db.prepare('UPDATE players SET token_id = ? WHERE id = ?').run(req.apiToken.id, playerId);
+    }
+
     const tokenRow   = tokenId
-      ? db.prepare('SELECT backend_url FROM api_tokens WHERE id = ? AND is_active = 1').get(tokenId)
+      ? db.prepare('SELECT backend_url, token FROM api_tokens WHERE id = ? AND is_active = 1').get(tokenId)
       : null;
     const backendUrl = tokenRow?.backend_url || null;
+    const tokenStr   = tokenRow?.token       || null;
     const normPhone  = normalizePhone(phone);
 
-    // ── 3. Build request body ───────────────────────────────────────────────
+    // ── 3. Build request body — include token so backend can authenticate ────
     const requestBody = {
       action:   'deduct',
+      token:    tokenStr,
       phone:    normPhone,
       username: playerRow?.name || 'Player',
       playerId,

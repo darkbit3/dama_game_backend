@@ -32,12 +32,16 @@ export function getTokenRow(tokenStr) {
 }
 
 /**
- * Fetch backend_url for a given token_id.
+ * Fetch backend_url AND the raw token string for a given token_id.
+ * Returns { backendUrl, tokenStr } or null values if not found.
  */
-function getBackendUrl(tokenId) {
-  if (!tokenId) return null;
-  const row = db.prepare('SELECT backend_url FROM api_tokens WHERE id = ?').get(tokenId);
-  return row?.backend_url || null;
+function getBackendInfo(tokenId) {
+  if (!tokenId) return { backendUrl: null, tokenStr: null };
+  const row = db.prepare('SELECT backend_url, token FROM api_tokens WHERE id = ?').get(tokenId);
+  return {
+    backendUrl: row?.backend_url || null,
+    tokenStr:   row?.token       || null,
+  };
 }
 
 /**
@@ -98,12 +102,6 @@ import { normalizePhone } from '../utils/phone.js';
 /**
  * Fetch real balance from owner's backend for a player.
  * Called on login to get the live balance.
- * Sends only phone as the identifier — simple and direct.
- *
- * @param {string} tokenStr   raw API token string
- * @param {string} phone
- * @param {string} username
- * @returns {number|null}     balance or null if unavailable
  */
 export async function fetchOwnerBalance(tokenStr, phone, username) {
   const tokenRow = getTokenRow(tokenStr);
@@ -111,6 +109,7 @@ export async function fetchOwnerBalance(tokenStr, phone, username) {
 
   const result = await callDamaEndpoint(tokenRow.backend_url, {
     action:   'get_balance',
+    token:    tokenStr,            // authenticate with the Dama API token
     phone:    normalizePhone(phone),
     username,
   });
@@ -133,24 +132,27 @@ export async function fetchOwnerBalance(tokenStr, phone, username) {
 
 /**
  * Notify owner: bets deducted (called when a match starts).
+ * Normalizes phone numbers before sending.
  */
 export async function notifyBetPlaced(tokenId, { player1Id, player2Id, betAmount, gameId }) {
-  const backendUrl = getBackendUrl(tokenId);
+  const { backendUrl, tokenStr } = getBackendInfo(tokenId);
   if (!backendUrl) return;
 
   await Promise.allSettled([
     callDamaEndpoint(backendUrl, {
       action:   'deduct',
+      token:    tokenStr,
       playerId: player1Id,
-      phone:    getPlayerPhone(player1Id),
+      phone:    normalizePhone(getPlayerPhone(player1Id)),
       username: getPlayerName(player1Id),
       amount:   betAmount,
       gameId,
     }),
     callDamaEndpoint(backendUrl, {
       action:   'deduct',
+      token:    tokenStr,
       playerId: player2Id,
-      phone:    getPlayerPhone(player2Id),
+      phone:    normalizePhone(getPlayerPhone(player2Id)),
       username: getPlayerName(player2Id),
       amount:   betAmount,
       gameId,
@@ -160,16 +162,18 @@ export async function notifyBetPlaced(tokenId, { player1Id, player2Id, betAmount
 
 /**
  * Notify owner: winner credited.
+ * Normalizes phone numbers before sending.
  */
 export async function notifyWinPayout(tokenId, { winnerId, loserId, winnerPayout, fee, gameId }) {
-  const backendUrl = getBackendUrl(tokenId);
+  const { backendUrl, tokenStr } = getBackendInfo(tokenId);
   if (!backendUrl) return;
 
   await Promise.allSettled([
     callDamaEndpoint(backendUrl, {
       action:   'credit',
+      token:    tokenStr,
       playerId: winnerId,
-      phone:    getPlayerPhone(winnerId),
+      phone:    normalizePhone(getPlayerPhone(winnerId)),
       username: getPlayerName(winnerId),
       amount:   winnerPayout,
       fee,
@@ -177,8 +181,9 @@ export async function notifyWinPayout(tokenId, { winnerId, loserId, winnerPayout
     }),
     callDamaEndpoint(backendUrl, {
       action:   'loss',
+      token:    tokenStr,
       playerId: loserId,
-      phone:    getPlayerPhone(loserId),
+      phone:    normalizePhone(getPlayerPhone(loserId)),
       username: getPlayerName(loserId),
       amount:   0,
       fee,
@@ -189,16 +194,18 @@ export async function notifyWinPayout(tokenId, { winnerId, loserId, winnerPayout
 
 /**
  * Notify owner: draw — each player refunded.
+ * Normalizes phone numbers before sending.
  */
 export async function notifyDrawRefund(tokenId, { player1Id, player2Id, refund, fee, gameId }) {
-  const backendUrl = getBackendUrl(tokenId);
+  const { backendUrl, tokenStr } = getBackendInfo(tokenId);
   if (!backendUrl) return;
 
   await Promise.allSettled([
     callDamaEndpoint(backendUrl, {
       action:   'refund',
+      token:    tokenStr,
       playerId: player1Id,
-      phone:    getPlayerPhone(player1Id),
+      phone:    normalizePhone(getPlayerPhone(player1Id)),
       username: getPlayerName(player1Id),
       amount:   refund,
       fee,
@@ -206,8 +213,9 @@ export async function notifyDrawRefund(tokenId, { player1Id, player2Id, refund, 
     }),
     callDamaEndpoint(backendUrl, {
       action:   'refund',
+      token:    tokenStr,
       playerId: player2Id,
-      phone:    getPlayerPhone(player2Id),
+      phone:    normalizePhone(getPlayerPhone(player2Id)),
       username: getPlayerName(player2Id),
       amount:   refund,
       fee,
@@ -219,28 +227,23 @@ export async function notifyDrawRefund(tokenId, { player1Id, player2Id, refund, 
 /**
  * Notify owner backend of their commission / profit / loss for a game.
  *
- * This is the key callback that tells the token owner's server how much
- * they earned or paid out for a game.
- *
  * Body sent to {backend_url}/dama:
  * {
  *   action:         'owner_fee',
+ *   token:          string,     // the Dama API token string — authenticates this call
  *   amount:         number,     // positive = owner earns, negative = owner pays out
- *   type:           string,     // 'pvp_win_fee' | 'pvp_draw_fee' | 'ai_win_fee' |
- *                               //  'ai_profit'  | 'ai_loss'      | 'ai_draw_fee'
+ *   type:           string,
  *   gameId:         string,
- *   humanPlayerId?: string      // set for AI games only
+ *   humanPlayerId?: string
  * }
- *
- * @param {number} tokenId
- * @param {{ amount: number, type: string, gameId: string, humanPlayerId?: string }} opts
  */
 export async function notifyOwnerFee(tokenId, { amount, type, gameId, humanPlayerId }) {
-  const backendUrl = getBackendUrl(tokenId);
+  const { backendUrl, tokenStr } = getBackendInfo(tokenId);
   if (!backendUrl) return;
 
   await callDamaEndpoint(backendUrl, {
     action:  'owner_fee',
+    token:   tokenStr,
     amount,
     type,
     gameId,

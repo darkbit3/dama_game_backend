@@ -100,7 +100,7 @@ export const pingTokenBackend = async (req, res, next) => {
       const resp = await fetch(pingUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ping' }),
+        body: JSON.stringify({ action: 'ping', token: row.token }),
         signal: AbortSignal.timeout(5000),
       });
       const latencyMs = Date.now() - t0;

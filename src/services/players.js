@@ -65,9 +65,9 @@ export const upsert = (data) => {
         difficulty  = COALESCE(?, difficulty),
         last_ip     = COALESCE(?, last_ip),
         last_device = COALESCE(?, last_device),
-        token_id    = COALESCE(?, token_id)
+        token_id    = CASE WHEN ? IS NOT NULL THEN ? ELSE token_id END
       WHERE id = ?
-    `).run(name, photo, phone, bet, pieceThemeId, isDemo ? 1 : 0, isAi ? 1 : 0, difficulty || null, lastIp, lastDevice, tokenId, id);
+    `).run(name, photo, phone, bet, pieceThemeId, isDemo ? 1 : 0, isAi ? 1 : 0, difficulty || null, lastIp, lastDevice, tokenId, tokenId, id);
   } else {
     db.prepare(`
       INSERT INTO players (id, name, photo, phone, bet, piece_theme, is_demo, is_ai, difficulty, last_ip, last_device, token_id)
