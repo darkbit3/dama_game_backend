@@ -16,6 +16,7 @@ export const FRONTEND_URL = process.env.FRONTEND_URL || 'https://dama-game-6d2b.
 const ALWAYS_ALLOWED = [
   'https://dama-game-6d2b.onrender.com',
   'https://dama-game-backend.onrender.com',
+  'https://dama-admin.onrender.com',
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:4173',
