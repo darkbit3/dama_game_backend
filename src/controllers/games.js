@@ -216,7 +216,27 @@ export const startBet = async (req, res, next) => {
     if (!playerId) return fail(res, 'playerId is required', 400);
     if (!phone)    return fail(res, 'phone is required',    400);
 
-    // ── 1. Upsert game record ───────────────────────────────────────────────
+    // ── 1. Ensure player exists, then upsert game record ──────────────────────
+    // Auto-create the player if they don't exist yet — prevents FK violation
+    // on the games INSERT and handles first-time logins gracefully.
+    const existingPlayer = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
+    if (!existingPlayer) {
+      const tokenId = req.apiToken?.id || null;
+      db.prepare(`
+        INSERT OR IGNORE INTO players (id, name, phone, token_id, balance)
+        VALUES (?, ?, ?, ?, 500)
+      `).run(
+        playerId,
+        req.body.username || 'Player',
+        normalizePhone(phone),
+        tokenId,
+      );
+    } else if (req.apiToken?.id) {
+      // Ensure token_id is linked even on existing player
+      db.prepare('UPDATE players SET token_id = ? WHERE id = ? AND token_id IS NULL')
+        .run(req.apiToken.id, playerId);
+    }
+
     let game = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
     if (!game) {
       db.prepare(`
@@ -234,11 +254,6 @@ export const startBet = async (req, res, next) => {
     // ── 2. Resolve token_id → backend_url + token string for this player ─────
     const playerRow  = db.prepare('SELECT token_id, name FROM players WHERE id = ?').get(playerId);
     const tokenId    = playerRow?.token_id || req.apiToken?.id || null;
-
-    // If player has no token_id but request has one, link it now
-    if (!playerRow?.token_id && req.apiToken?.id) {
-      db.prepare('UPDATE players SET token_id = ? WHERE id = ?').run(req.apiToken.id, playerId);
-    }
 
     const tokenRow   = tokenId
       ? db.prepare('SELECT backend_url, token FROM api_tokens WHERE id = ? AND is_active = 1').get(tokenId)

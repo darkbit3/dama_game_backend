@@ -14,7 +14,22 @@ export const listPlayers = async (req, res, next) => {
 export const getPlayer = async (req, res, next) => {
   try {
     const player = playersService.getById(req.params.id);
-    if (!player) return fail(res, 'Player not found', 404);
+    if (!player) {
+      // Auto-create player on first fetch — handles race condition where
+      // fetchCurrentPlayer runs before syncWithBackend completes.
+      // Only do this for phone-based IDs (ph_ prefix) with a valid token.
+      if (req.params.id.startsWith('ph_') && req.apiToken?.id) {
+        const phone = req.params.id.replace('ph_', '');
+        const created = playersService.upsert({
+          id:      req.params.id,
+          name:    'Player',
+          phone,
+          tokenId: req.apiToken.id,
+        });
+        return ok(res, created);
+      }
+      return fail(res, 'Player not found', 404);
+    }
     ok(res, player);
   } catch (err) {
     next(err);
@@ -97,7 +112,19 @@ export const recordResult = async (req, res, next) => {
 export const setReady = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const existing = playersService.getById(id);
+    let existing = playersService.getById(id);
+
+    // Auto-create player if missing (handles race condition on first login)
+    if (!existing && id.startsWith('ph_') && req.apiToken?.id) {
+      const phone = id.replace('ph_', '');
+      existing = playersService.upsert({
+        id,
+        name:    'Player',
+        phone,
+        tokenId: req.apiToken.id,
+      });
+    }
+
     if (!existing) return fail(res, 'Player not found', 404);
 
     const { bet } = req.body;
