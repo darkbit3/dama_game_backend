@@ -89,31 +89,37 @@ export function ensureOwnerBalanceTable() {
 /**
  * Adjust owner balance by `delta` (positive = credit, negative = deduct).
  * Always saves a transaction row.
+ * Balance CAN go negative (e.g. when the house backs AI and player wins).
  *
  * @param {number} tokenId
  * @param {string} gameId
- * @param {number} delta        can be negative (owner pays out)
+ * @param {number} delta        positive = owner earns, negative = owner pays out
  * @param {string} type         transaction type string
  * @param {string} note
  */
 function adjustOwnerBalance(tokenId, gameId, delta, type, note) {
   if (!tokenId) return;
 
-  // Upsert balance row — balance floors at 0, total_earned only grows
+  // Upsert balance row — balance allowed to go negative (house can be in debt)
+  // total_earned tracks cumulative positive income only
   db.prepare(`
     INSERT INTO token_owner_balances (token_id, balance, total_earned)
-    VALUES (?, MAX(0, ?), MAX(0, ?))
+    VALUES (?, ?, CASE WHEN ? > 0 THEN ? ELSE 0 END)
     ON CONFLICT(token_id) DO UPDATE SET
-      balance      = MAX(0, balance + excluded.balance),
-      total_earned = total_earned + MAX(0, excluded.total_earned),
+      balance      = balance + excluded.balance,
+      total_earned = total_earned + CASE WHEN excluded.total_earned > 0 THEN excluded.total_earned ELSE 0 END,
       updated_at   = unixepoch()
-  `).run(tokenId, delta, delta);
+  `).run(tokenId, delta, delta, delta);
 
-  // Always log the transaction (even negatives)
+  // Read the new running balance after the update
+  const row = db.prepare('SELECT balance FROM token_owner_balances WHERE token_id = ?').get(tokenId);
+  const runningBalance = row?.balance ?? 0;
+
+  // Log transaction with running_balance so the UI can show balance-per-step
   db.prepare(`
-    INSERT INTO token_owner_transactions (token_id, game_id, type, amount, note)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(tokenId, gameId || null, type, delta, note || null);
+    INSERT INTO token_owner_transactions (token_id, game_id, type, amount, running_balance, note)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(tokenId, gameId || null, type, delta, runningBalance, note || null);
 }
 
 /**

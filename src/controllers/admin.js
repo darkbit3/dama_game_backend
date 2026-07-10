@@ -211,12 +211,13 @@ export const getOwnerTransactions = async (req, res, next) => {
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
     const rows = db.prepare(`
-      SELECT tot.id, tot.token_id, tot.game_id, tot.type, tot.amount, tot.note, tot.created_at,
+      SELECT tot.id, tot.token_id, tot.game_id, tot.type, tot.amount,
+             tot.running_balance, tot.note, tot.created_at,
              t.owner, t.key_name
       FROM token_owner_transactions tot
       JOIN api_tokens t ON t.id = tot.token_id
       ${where}
-      ORDER BY tot.created_at DESC
+      ORDER BY tot.created_at DESC, tot.id DESC
       LIMIT 500
     `).all(...params);
 

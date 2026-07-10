@@ -25,10 +25,15 @@ export const runMigrations = () => {
     )
   `);
 
-  // ── Backfill token_id for real players whose phone matches a token owner ──
-  // Link all non-AI, non-demo players that have a phone but no token_id
-  // to the first active token (token_id=1). Safe to run repeatedly — only
-  // updates rows where token_id IS NULL.
+  // ── Add running_balance column to token_owner_transactions (idempotent) ───
+  // This stores the cumulative owner balance AFTER each transaction — makes
+  // the transaction log self-contained for display purposes.
+  try {
+    db.prepare('ALTER TABLE token_owner_transactions ADD COLUMN running_balance INTEGER').run();
+    logger.info('Migration: added running_balance column to token_owner_transactions');
+  } catch { /* already exists */ }
+
+  // ── Backfill token_id for real players whose phone is set but token_id is null
   try {
     const firstToken = db.prepare(
       'SELECT id FROM api_tokens WHERE is_active = 1 ORDER BY id ASC LIMIT 1'
@@ -38,7 +43,7 @@ export const runMigrations = () => {
         'UPDATE players SET token_id = ? WHERE token_id IS NULL AND phone IS NOT NULL AND is_ai = 0 AND is_demo = 0'
       ).run(firstToken.id).changes;
       if (changes > 0) {
-        logger.info(`Backfilled token_id=${firstToken.id} for ${changes} player(s) with no token link.`);
+        logger.info(`Backfilled token_id=${firstToken.id} for ${changes} player(s).`);
       }
     }
   } catch (err) {
