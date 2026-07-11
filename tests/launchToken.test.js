@@ -15,20 +15,13 @@ const VALID_CLAIMS = {
 const { verifyLaunchToken } = await import('../src/utils/launchToken.js');
 
 describe('verifyLaunchToken', () => {
-  let originalSystemBackendUrl;
+  const SYSTEM_BACKEND_URL = 'https://system-backend.example';
 
   beforeEach(() => {
-    originalSystemBackendUrl = process.env.SYSTEM_BACKEND_URL;
-    process.env.SYSTEM_BACKEND_URL = 'https://system-backend.example';
     vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
-    if (originalSystemBackendUrl === undefined) {
-      delete process.env.SYSTEM_BACKEND_URL;
-    } else {
-      process.env.SYSTEM_BACKEND_URL = originalSystemBackendUrl;
-    }
     vi.unstubAllGlobals();
   });
 
@@ -38,7 +31,7 @@ describe('verifyLaunchToken', () => {
       json: async () => ({ valid: true, ...VALID_CLAIMS }),
     });
 
-    const result = await verifyLaunchToken('token');
+    const result = await verifyLaunchToken('token', SYSTEM_BACKEND_URL);
 
     expect(fetch).toHaveBeenCalledWith(
       'https://system-backend.example/api/verify-launch-token',
@@ -62,17 +55,15 @@ describe('verifyLaunchToken', () => {
       json: async () => ({ valid: false }),
     });
 
-    await expect(verifyLaunchToken('token')).resolves.toBeNull();
+    await expect(verifyLaunchToken('token', SYSTEM_BACKEND_URL)).resolves.toBeNull();
   });
 
   it('throws when the system backend URL is missing', async () => {
-    delete process.env.SYSTEM_BACKEND_URL;
-
-    await expect(verifyLaunchToken('token')).rejects.toThrow('SYSTEM_BACKEND_URL is not configured');
+    await expect(verifyLaunchToken('token', '')).rejects.toThrow('system backend URL is required');
   });
 
   it('returns null for empty tokens before contacting the system backend', async () => {
-    await expect(verifyLaunchToken('   ')).resolves.toBeNull();
+    await expect(verifyLaunchToken('   ', SYSTEM_BACKEND_URL)).resolves.toBeNull();
     expect(fetch).not.toHaveBeenCalled();
   });
 });

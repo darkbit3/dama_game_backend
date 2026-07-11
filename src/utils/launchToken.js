@@ -18,21 +18,21 @@
  * Verify a launch token by delegating to system-backend.
  *
  * @param {string|undefined|null} launchToken  — raw token string from the request
+ * @param {string} systemBackendUrl  — the backend URL to query for verification
  * @returns {Promise<{ phone: string, username: string, balance: number, gameId?: string } | null>}
  *
- * @throws {Error} when the system-backend URL is not configured or verification fails
+ * @throws {Error} when verification fails
  */
-export async function verifyLaunchToken(launchToken) {
+export async function verifyLaunchToken(launchToken, systemBackendUrl) {
   if (!launchToken || typeof launchToken !== 'string' || !launchToken.trim()) {
     return null;
   }
 
-  const systemBackendUrl = process.env.SYSTEM_BACKEND_URL?.trim();
-  if (!systemBackendUrl) {
-    throw new Error('SYSTEM_BACKEND_URL is not configured');
+  if (!systemBackendUrl || typeof systemBackendUrl !== 'string' || !systemBackendUrl.trim()) {
+    throw new Error('system backend URL is required');
   }
 
-  const verifyUrl = `${systemBackendUrl.replace(/\/$/, '')}/api/verify-launch-token`;
+  const verifyUrl = `${systemBackendUrl.trim().replace(/\/$/, '')}/api/verify-launch-token`;
 
   try {
     const response = await fetch(verifyUrl, {

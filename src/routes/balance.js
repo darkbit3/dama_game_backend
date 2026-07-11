@@ -19,6 +19,7 @@
 
 import { Router } from 'express';
 import { body } from 'express-validator';
+import db from '../db/database.js';
 import { validate } from '../middleware/validate.js';
 import { fetchOwnerBalance } from '../services/ownerCallback.js';
 import { verifyLaunchToken } from '../utils/launchToken.js';
@@ -53,10 +54,19 @@ router.post('/',
     try {
       const { token, launch } = req.body;
 
-      // ── 1. Verify launch token ─────────────────────────────────────────────
+      // ── 1. Verify token exists and has a backend_url ───────────────────────
+      const tokenRow = db.prepare(
+        'SELECT backend_url FROM api_tokens WHERE token = ? AND is_active = 1'
+      ).get(token);
+
+      if (!tokenRow || !tokenRow.backend_url) {
+        return fail(res, 'Invalid or inactive token', 401);
+      }
+
+      // ── 2. Verify launch token with system-backend ────────────────────────
       let claims;
       try {
-        claims = await verifyLaunchToken(launch);
+        claims = await verifyLaunchToken(launch, tokenRow.backend_url);
       } catch (err) {
         return fail(res, 'Invalid launch token', 401);
       }
@@ -66,13 +76,13 @@ router.post('/',
         return fail(res, 'Invalid launch token', 401);
       }
 
-      // ── 2. Fetch balance from owner backend using server-extracted values ──
+      // ── 3. Fetch balance from owner backend using server-extracted values ──
       // phone and username come exclusively from the verified JWT — the client
       // has no way to supply or tamper with them.
       const { phone, username } = claims;
       const data = await fetchOwnerBalance(token, normalizePhone(phone), username);
 
-      // ── 3. Return balance to frontend ──────────────────────────────────────
+      // ── 4. Return balance to frontend ──────────────────────────────────────
       // NOTE: phone is intentionally NOT included in this response.
       ok(res, {
         balance:  data ? data.balance  : null,
