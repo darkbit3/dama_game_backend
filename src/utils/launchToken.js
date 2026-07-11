@@ -31,6 +31,15 @@ export function verifyLaunchToken(launchToken) {
   // Read at call time so the server fails loudly on the first real request if
   // the env var was never set, rather than silently at module load.
   const secret = process.env.DAMA_LAUNCH_SECRET;
+
+  // ── DIAGNOSTIC (remove after confirming fix) ────────────────────────────
+  const tokenPreview = (launchToken && typeof launchToken === 'string')
+    ? launchToken.slice(0, 20) + '…'
+    : String(launchToken);
+  console.log('[launchToken] received launch (first 20 chars):', tokenPreview);
+  console.log('[launchToken] DAMA_LAUNCH_SECRET set:', !!secret);
+  // ── END DIAGNOSTIC ───────────────────────────────────────────────────────
+
   if (!secret) {
     throw new Error('DAMA_LAUNCH_SECRET is not configured on this server');
   }
@@ -39,18 +48,36 @@ export function verifyLaunchToken(launchToken) {
     return null;
   }
 
-  // jwt.verify throws on any failure — callers catch and map to HTTP status
-  const payload = jwt.verify(launchToken.trim(), secret);
+  try {
+    // jwt.verify throws on any failure — callers catch and map to HTTP status
+    const payload = jwt.verify(launchToken.trim(), secret);
 
-  // Sanity-check required claims — a token missing phone/username is useless
-  if (!payload.phone || !payload.username) {
-    return null;
+    // Sanity-check required claims — a token missing phone/username is useless
+    if (!payload.phone || !payload.username) {
+      // ── DIAGNOSTIC ───────────────────────────────────────────────────────
+      console.log('[launchToken] verify OK but missing claims — phone:', !!payload.phone, 'username:', !!payload.username);
+      // ── END DIAGNOSTIC ───────────────────────────────────────────────────
+      return null;
+    }
+
+    // ── DIAGNOSTIC ─────────────────────────────────────────────────────────
+    console.log('[launchToken] verify OK — username:', payload.username);
+    // ── END DIAGNOSTIC ─────────────────────────────────────────────────────
+
+    return {
+      phone:    payload.phone,
+      username: payload.username,
+      balance:  typeof payload.balance === 'number' ? payload.balance : null,
+      gameId:   payload.gameId  || null,
+    };
+
+  } catch (err) {
+    // ── DIAGNOSTIC: log the EXACT error name so we know which failure this is
+    // "invalid signature" → secret mismatch between system-backend and here
+    // "jwt expired"       → token TTL exceeded before request arrived
+    // "jwt malformed"     → launch value is not a valid JWT string at all
+    console.log('[launchToken] jwt.verify FAILED:', err.name, '|', err.message);
+    // ── END DIAGNOSTIC ─────────────────────────────────────────────────────
+    throw err; // re-throw so balance.js maps it to the correct 401 message
   }
-
-  return {
-    phone:    payload.phone,
-    username: payload.username,
-    balance:  typeof payload.balance === 'number' ? payload.balance : null,
-    gameId:   payload.gameId  || null,
-  };
 }
