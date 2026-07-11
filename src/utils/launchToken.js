@@ -76,7 +76,8 @@ export function verifyLaunchToken(launchToken) {
     // "invalid signature" → secret mismatch between system-backend and here
     // "jwt expired"       → token TTL exceeded before request arrived
     // "jwt malformed"     → launch value is not a valid JWT string at all
-    console.log('[launchToken] jwt.verify FAILED:', err.name, '|', err.message);
+    const tokenLength = (typeof launchToken === 'string') ? launchToken.length : 0;
+    console.log('[launchToken] jwt.verify FAILED:', err.name, '|', err.message, '| tokenLength:', tokenLength);
     // ── END DIAGNOSTIC ─────────────────────────────────────────────────────
     throw err; // re-throw so balance.js maps it to the correct 401 message
   }

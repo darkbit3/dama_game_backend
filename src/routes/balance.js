@@ -54,6 +54,9 @@ router.post('/',
     try {
       const { token, launch } = req.body;
 
+      // Log presence (true/false) of expected body fields for diagnostics
+      console.log('[balance] request body flags — launchPresent:', !!launch, 'tokenPresent:', !!token);
+
       // ── 1. Verify launch token ─────────────────────────────────────────────
       let claims;
       try {
