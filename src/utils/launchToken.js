@@ -32,13 +32,7 @@ export function verifyLaunchToken(launchToken) {
   // the env var was never set, rather than silently at module load.
   const secret = process.env.DAMA_LAUNCH_SECRET;
 
-  // ── DIAGNOSTIC (remove after confirming fix) ────────────────────────────
-  const tokenPreview = (launchToken && typeof launchToken === 'string')
-    ? launchToken.slice(0, 20) + '…'
-    : String(launchToken);
-  console.log('[launchToken] received launch (first 20 chars):', tokenPreview);
-  console.log('[launchToken] DAMA_LAUNCH_SECRET set:', !!secret);
-  // ── END DIAGNOSTIC ───────────────────────────────────────────────────────
+  // (diagnostic removed)
 
   if (!secret) {
     throw new Error('DAMA_LAUNCH_SECRET is not configured on this server');
@@ -72,13 +66,7 @@ export function verifyLaunchToken(launchToken) {
     };
 
   } catch (err) {
-    // ── DIAGNOSTIC: log the EXACT error name so we know which failure this is
-    // "invalid signature" → secret mismatch between system-backend and here
-    // "jwt expired"       → token TTL exceeded before request arrived
-    // "jwt malformed"     → launch value is not a valid JWT string at all
-    const tokenLength = (typeof launchToken === 'string') ? launchToken.length : 0;
-    console.log('[launchToken] jwt.verify FAILED:', err.name, '|', err.message, '| tokenLength:', tokenLength);
-    // ── END DIAGNOSTIC ─────────────────────────────────────────────────────
-    throw err; // re-throw so balance.js maps it to the correct 401 message
+    // jwt.verify failed — re-throw so balance.js maps it to the correct 401
+    throw err;
   }
 }
