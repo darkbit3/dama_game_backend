@@ -12,13 +12,6 @@ export const DB_PATH = process.env.DB_PATH || './data/dama.db';
 export const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'default-admin-token';
 export const FRONTEND_URL = process.env.FRONTEND_URL || 'https://dama-game-6d2b.onrender.com';
 
-// Shared secret between system-backend and dama-backend used to sign/verify
-// short-lived launch tokens that carry { phone, username, balance }.
-// Must match the value set in system-backend exactly.
-// No default — the app starts without it (verifyLaunchToken will throw a clear
-// error at request time so misconfiguration is immediately visible in logs).
-export const DAMA_LAUNCH_SECRET = process.env.DAMA_LAUNCH_SECRET || null;
-
 // Always include these production origins plus anything set via env var
 const ALWAYS_ALLOWED = [
   'https://dama-game-6d2b.onrender.com',

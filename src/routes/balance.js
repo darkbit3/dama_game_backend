@@ -8,8 +8,8 @@
 // The frontend never sends a raw phone number.  Instead system-backend mints a
 // short-lived signed JWT (the "launch token") that contains { phone, username,
 // balance, gameId }.  The frontend forwards that opaque string here along with
-// its Dama API token.  This backend verifies the JWT signature (DAMA_LAUNCH_SECRET)
-// and extracts the phone/username — the browser never sees either value in plain
+// its Dama API token.  This backend asks system-backend to verify the token and
+// extracts the phone/username — the browser never sees either value in plain
 // text.
 //
 // Flow:
@@ -19,7 +19,6 @@
 
 import { Router } from 'express';
 import { body } from 'express-validator';
-import jwt from 'jsonwebtoken';
 import { validate } from '../middleware/validate.js';
 import { fetchOwnerBalance } from '../services/ownerCallback.js';
 import { verifyLaunchToken } from '../utils/launchToken.js';
@@ -57,12 +56,8 @@ router.post('/',
       // ── 1. Verify launch token ─────────────────────────────────────────────
       let claims;
       try {
-        claims = verifyLaunchToken(launch);
+        claims = await verifyLaunchToken(launch);
       } catch (err) {
-        if (err instanceof jwt.TokenExpiredError) {
-          return fail(res, 'Launch token has expired', 401);
-        }
-        // JsonWebTokenError, missing secret, etc.
         return fail(res, 'Invalid launch token', 401);
       }
 

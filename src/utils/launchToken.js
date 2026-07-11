@@ -3,70 +3,71 @@
 // Server-side verification of the short-lived launch token that system-backend
 // mints and passes to the frontend as a URL parameter.
 //
-// The token is a signed JWT containing: { phone, username, balance, gameId? }
-// signed with DAMA_LAUNCH_SECRET — a shared secret known only to system-backend
-// and dama-backend.  The browser never sees the secret or the raw phone number;
-// it only carries an opaque token string that it forwards to this backend.
+// The browser never sees the raw phone number; it only carries an opaque token
+// string that it forwards to this backend. This backend asks system-backend to
+// verify the token and return the claims.
 //
 // Usage:
 //   import { verifyLaunchToken } from '../utils/launchToken.js';
-//   const claims = verifyLaunchToken(launchParam);
+//   const claims = await verifyLaunchToken(launchParam);
 //   // claims === null  →  missing / malformed token
-//   // throws TokenExpiredError  →  expired (treat as 401)
+//   // throws Error     →  expired / invalid / verification failure (treat as 401)
 //   // returns { phone, username, balance, gameId }  →  valid
 
-import jwt from 'jsonwebtoken';
-
 /**
- * Verify a launch JWT and extract its claims.
+ * Verify a launch token by delegating to system-backend.
  *
  * @param {string|undefined|null} launchToken  — raw token string from the request
- * @returns {{ phone: string, username: string, balance: number, gameId?: string }}
+ * @returns {Promise<{ phone: string, username: string, balance: number, gameId?: string } | null>}
  *
- * @throws {jwt.TokenExpiredError}   when the token signature is valid but expired
- * @throws {jwt.JsonWebTokenError}   when the token is malformed / signature mismatch
- * @throws {Error}                   when DAMA_LAUNCH_SECRET is not configured
+ * @throws {Error} when the system-backend URL is not configured or verification fails
  */
-export function verifyLaunchToken(launchToken) {
-  // Read at call time so the server fails loudly on the first real request if
-  // the env var was never set, rather than silently at module load.
-  const secret = process.env.DAMA_LAUNCH_SECRET;
-
-  // (diagnostic removed)
-
-  if (!secret) {
-    throw new Error('DAMA_LAUNCH_SECRET is not configured on this server');
-  }
-
+export async function verifyLaunchToken(launchToken) {
   if (!launchToken || typeof launchToken !== 'string' || !launchToken.trim()) {
     return null;
   }
 
-  try {
-    // jwt.verify throws on any failure — callers catch and map to HTTP status
-    const payload = jwt.verify(launchToken.trim(), secret);
+  const systemBackendUrl = process.env.SYSTEM_BACKEND_URL?.trim();
+  if (!systemBackendUrl) {
+    throw new Error('SYSTEM_BACKEND_URL is not configured');
+  }
 
-    // Sanity-check required claims — a token missing phone/username is useless
-    if (!payload.phone || !payload.username) {
-      // ── DIAGNOSTIC ───────────────────────────────────────────────────────
-      console.log('[launchToken] verify OK but missing claims — phone:', !!payload.phone, 'username:', !!payload.username);
-      // ── END DIAGNOSTIC ───────────────────────────────────────────────────
+  const verifyUrl = `${systemBackendUrl.replace(/\/$/, '')}/api/verify-launch-token`;
+
+  try {
+    const response = await fetch(verifyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ launch: launchToken.trim() }),
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(`Launch token verification failed with status ${response.status}`);
+    }
+
+    if (!payload || payload.valid !== true) {
       return null;
     }
 
-    // ── DIAGNOSTIC ─────────────────────────────────────────────────────────
-    console.log('[launchToken] verify OK — username:', payload.username);
-    // ── END DIAGNOSTIC ─────────────────────────────────────────────────────
+    if (!payload.phone || !payload.username) {
+      return null;
+    }
 
     return {
-      phone:    payload.phone,
+      phone: payload.phone,
       username: payload.username,
-      balance:  typeof payload.balance === 'number' ? payload.balance : null,
-      gameId:   payload.gameId  || null,
+      balance: typeof payload.balance === 'number' ? payload.balance : null,
+      gameId: payload.gameId || null,
     };
-
   } catch (err) {
-    // jwt.verify failed — re-throw so balance.js maps it to the correct 401
-    throw err;
+    if (err instanceof Error) {
+      throw err;
+    }
+
+    throw new Error('Launch token verification failed');
   }
 }
