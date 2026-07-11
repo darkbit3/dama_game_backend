@@ -25,6 +25,7 @@ import { fetchOwnerBalance } from '../services/ownerCallback.js';
 import { verifyLaunchToken } from '../utils/launchToken.js';
 import { ok, fail } from '../utils/response.js';
 import { normalizePhone } from '../utils/phone.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -60,21 +61,29 @@ router.post('/',
       ).get(token);
 
       if (!tokenRow || !tokenRow.backend_url) {
+        logger.error(`[balance] Token lookup failed: token=${token ? 'provided' : 'missing'}, row=${tokenRow ? 'found' : 'not found'}`);
         return fail(res, 'Invalid or inactive token', 401);
       }
+
+      logger.info(`[balance] Token found: backend=${tokenRow.backend_url}`);
 
       // ── 2. Verify launch token with system-backend ────────────────────────
       let claims;
       try {
+        logger.info(`[balance] Verifying launch token with ${tokenRow.backend_url}...`);
         claims = await verifyLaunchToken(launch, tokenRow.backend_url);
       } catch (err) {
+        logger.error(`[balance] Launch token verification error: ${err.message}`);
         return fail(res, 'Invalid launch token', 401);
       }
 
       if (!claims) {
         // null → missing/empty string or missing required claims
+        logger.error(`[balance] Launch token returned null`);
         return fail(res, 'Invalid launch token', 401);
       }
+
+      logger.info(`[balance] Launch token verified: phone=${claims.phone}, username=${claims.username}`);
 
       // ── 3. Fetch balance from owner backend using server-extracted values ──
       // phone and username come exclusively from the verified JWT — the client
