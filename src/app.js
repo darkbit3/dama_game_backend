@@ -9,6 +9,12 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
+// Temporary request logging for deployment debugging
+app.use((req, res, next) => {
+  console.log('[INCOMING]', req.method, req.path, JSON.stringify(req.headers));
+  next();
+});
+
 // Trust reverse-proxy headers so req.ip gives the real client IP
 app.set('trust proxy', true);
 
