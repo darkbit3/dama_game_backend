@@ -37,12 +37,18 @@ Public. Check if server is running.
 ### `POST /api/player-balance`
 Public. Called by the frontend on load to fetch the real balance from the token owner's backend.
 
+**Security Model:**
+The frontend never sends raw phone/username. Instead:
+1. System-backend mints a short-lived signed JWT (launch token) containing `{ phone, username, balance, gameId }`
+2. Frontend forwards this opaque token to dama-backend along with the API token
+3. Dama-backend verifies the launch token with system-backend (which decrypts it)
+4. Dama-backend extracts phone/username only from the verified JWT (never exposes to client)
+
 **Request:**
 ```json
 {
-  "token":    "dama_a52ea8f0ac191e6a23a39347...",
-  "phone":    "0909095880",
-  "username": "Kaleab"
+  "token":  "dama_a52ea8f0ac191e6a23a39347...",
+  "launch": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
@@ -51,17 +57,19 @@ Public. Called by the frontend on load to fetch the real balance from the token 
 {
   "ok": true,
   "data": {
-    "balance": 1250
+    "balance": 1250,
+    "username": "Kaleab"
   }
 }
 ```
 
-**Response (owner backend unreachable or not configured):**
+**Response (owner backend unreachable, token invalid, or not configured):**
 ```json
 {
   "ok": true,
   "data": {
-    "balance": null
+    "balance": null,
+    "username": null
   }
 }
 ```
