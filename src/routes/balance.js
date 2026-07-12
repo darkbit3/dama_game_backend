@@ -61,8 +61,8 @@ router.post('/',
       ).get(token);
 
       if (!tokenRow || !tokenRow.backend_url) {
-        logger.error(`[balance] Token lookup failed: token=${token ? 'provided' : 'missing'}, row=${tokenRow ? 'found' : 'not found'}`);
-        return fail(res, 'Invalid or inactive token', 401);
+        logger.warn(`[balance] Token lookup failed: token=${token ? 'provided' : 'missing'}, row=${tokenRow ? 'found' : 'not found'}`);
+        return ok(res, { balance: null, username: null });
       }
 
       logger.info(`[balance] Token found: backend=${tokenRow.backend_url}`);
@@ -73,14 +73,14 @@ router.post('/',
         logger.info(`[balance] Verifying launch token with ${tokenRow.backend_url}...`);
         claims = await verifyLaunchToken(launch, tokenRow.backend_url);
       } catch (err) {
-        logger.error(`[balance] Launch token verification error: ${err.message}`);
-        return fail(res, 'Invalid launch token', 401);
+        logger.warn(`[balance] Launch token verification error: ${err.message}`);
+        return ok(res, { balance: null, username: null });
       }
 
       if (!claims) {
         // null → missing/empty string or missing required claims
-        logger.error(`[balance] Launch token returned null`);
-        return fail(res, 'Invalid launch token', 401);
+        logger.warn(`[balance] Launch token returned null`);
+        return ok(res, { balance: null, username: null });
       }
 
       logger.info(`[balance] Launch token verified: phone=${claims.phone}, username=${claims.username}`);

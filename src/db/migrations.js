@@ -2,6 +2,19 @@ import db from './database.js';
 import { applySchema } from './schema.js';
 import { ensureOwnerBalanceTable } from '../services/settlement.js';
 import { logger } from '../utils/logger.js';
+import crypto from 'crypto';
+
+export function ensureDefaultApiToken(targetDb = db) {
+  const existing = targetDb.prepare('SELECT id FROM api_tokens WHERE token = ?').get('dama_shared_frontend');
+  if (existing) return null;
+
+  const token = 'dama_' + crypto.randomBytes(24).toString('hex');
+  targetDb.prepare(`
+    INSERT INTO api_tokens (token, key_name, owner, is_active)
+    VALUES (?, ?, ?, 1)
+  `).run(token, 'shared-frontend', 'Admin');
+  return token;
+}
 
 export const runMigrations = () => {
   logger.info('Running database migrations...');
@@ -41,6 +54,12 @@ export const runMigrations = () => {
       FOREIGN KEY (token_id) REFERENCES api_tokens(id)
     )
   `);
+
+  // ── Ensure a default API token exists for the frontend on fresh deployments ─
+  const seededToken = ensureDefaultApiToken();
+  if (seededToken) {
+    logger.info(`Seeded default API token: ${seededToken}`);
+  }
 
   // ── Add running_balance column to token_owner_transactions (idempotent) ───
   // This stores the cumulative owner balance AFTER each transaction — makes

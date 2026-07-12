@@ -16,6 +16,7 @@ function extractRawToken(req) {
   }
   if (req.headers['x-api-token']) return req.headers['x-api-token'];
   if (req.query?.token) return req.query.token;
+  if (req.query?.apiToken) return req.query.apiToken;
   return null;
 }
 
@@ -27,10 +28,19 @@ function extractRawToken(req) {
 function lookupApiToken(raw) {
   if (!raw) return null;
 
+  const normalized = String(raw).trim();
   const row = db.prepare(`
     SELECT id, token, key_name, owner, is_active, expires_at
     FROM api_tokens WHERE token = ?
-  `).get(raw);
+  `).get(normalized);
+
+  if (!row) {
+    const fallback = db.prepare(`
+      SELECT id, token, key_name, owner, is_active, expires_at
+      FROM api_tokens WHERE token = ?
+    `).get(`dama_${normalized.replace(/^dama_/, '')}`);
+    if (fallback) return fallback;
+  }
 
   if (!row) return null;
   if (!row.is_active) return null;
@@ -38,6 +48,18 @@ function lookupApiToken(raw) {
 
   db.prepare('UPDATE api_tokens SET last_used = unixepoch() WHERE id = ?').run(row.id);
   return row;
+}
+
+function logTokenMismatch(raw, req) {
+  const preview = typeof raw === 'string' ? raw.slice(0, 80) : String(raw || '');
+  console.warn(`[auth] token rejected`, {
+    path: req.path,
+    method: req.method,
+    receivedToken: preview,
+    headerToken: req.headers['x-api-token'] || null,
+    queryToken: req.query?.token || null,
+    queryApiToken: req.query?.apiToken || null,
+  });
 }
 
 /**
@@ -64,6 +86,7 @@ export const requireToken = (req, res, next) => {
 
   const row = lookupApiToken(raw);
   if (!row) {
+    logTokenMismatch(raw, req);
     const exists = db.prepare('SELECT is_active, expires_at FROM api_tokens WHERE token = ?').get(raw);
     if (!exists)         return res.status(401).json({ ok: false, error: 'Invalid API token' });
     if (!exists.is_active) return res.status(401).json({ ok: false, error: 'API token has been revoked' });
@@ -111,6 +134,7 @@ export const requireTokenOrAdmin = (req, res, next) => {
   if (!raw) return res.status(401).json({ ok: false, error: 'API token or admin session required' });
 
   // Give a specific reason
+  logTokenMismatch(raw, req);
   const exists = db.prepare('SELECT is_active, expires_at FROM api_tokens WHERE token = ?').get(raw);
   if (!exists)           return res.status(401).json({ ok: false, error: 'Invalid credentials' });
   if (!exists.is_active) return res.status(401).json({ ok: false, error: 'API token has been revoked' });
