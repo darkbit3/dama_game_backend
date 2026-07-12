@@ -11,7 +11,10 @@ const app = express();
 
 // Temporary request logging for deployment debugging
 app.use((req, res, next) => {
-  console.log('[INCOMING]', req.method, req.path, JSON.stringify(req.headers));
+  console.log('[INCOMING]', req.method, req.path, JSON.stringify({
+    headers: req.headers,
+    query: req.query,
+  }));
   next();
 });
 

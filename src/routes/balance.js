@@ -89,7 +89,13 @@ router.post('/',
       // phone and username come exclusively from the verified JWT — the client
       // has no way to supply or tamper with them.
       const { phone, username } = claims;
-      const data = await fetchOwnerBalance(token, normalizePhone(phone), username);
+      let data = null;
+      try {
+        data = await fetchOwnerBalance(token, normalizePhone(phone), username);
+      } catch (err) {
+        logger.warn(`[balance] Balance lookup failed: ${err.message}`);
+        return ok(res, { balance: null, username: null });
+      }
 
       // ── 4. Return balance to frontend ──────────────────────────────────────
       // NOTE: phone is intentionally NOT included in this response.

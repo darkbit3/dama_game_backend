@@ -33,6 +33,7 @@ export async function verifyLaunchToken(launchToken, systemBackendUrl) {
   }
 
   const verifyUrl = `${systemBackendUrl.trim().replace(/\/$/, '')}/api/verify-launch-token`;
+  console.log('[launch-token] verifying', { verifyUrl, launchLength: launchToken.trim().length });
 
   try {
     const response = await fetch(verifyUrl, {
@@ -43,13 +44,42 @@ export async function verifyLaunchToken(launchToken, systemBackendUrl) {
       body: JSON.stringify({ launch: launchToken.trim() }),
     });
 
-    const payload = await response.json().catch(() => null);
+    let rawBody = '';
+    let payload = null;
+
+    try {
+      if (typeof response.json === 'function') {
+        payload = await response.json();
+      }
+    } catch {
+      payload = null;
+    }
+
+    if (!payload && typeof response.text === 'function') {
+      try {
+        rawBody = await response.text();
+        payload = rawBody ? JSON.parse(rawBody) : null;
+      } catch {
+        payload = null;
+      }
+    }
+
+    if (typeof rawBody !== 'string') {
+      rawBody = payload ? JSON.stringify(payload) : '';
+    }
+
+    console.log('[launch-token] response', {
+      verifyUrl,
+      status: response.status,
+      rawBody,
+    });
 
     if (!response.ok) {
       throw new Error(`Launch token verification failed with status ${response.status}`);
     }
 
     if (!payload || payload.valid !== true) {
+      console.warn('[launch-token] invalid response payload', { verifyUrl, payload });
       return null;
     }
 

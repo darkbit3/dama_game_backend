@@ -51,14 +51,15 @@ function lookupApiToken(raw) {
 }
 
 function logTokenMismatch(raw, req) {
-  const preview = typeof raw === 'string' ? raw.slice(0, 80) : String(raw || '');
+  const receivedToken = typeof raw === 'string' ? raw.trim() : '';
   console.warn(`[auth] token rejected`, {
     path: req.path,
     method: req.method,
-    receivedToken: preview,
+    receivedToken,
     headerToken: req.headers['x-api-token'] || null,
     queryToken: req.query?.token || null,
     queryApiToken: req.query?.apiToken || null,
+    authorizationHeader: req.headers.authorization ? 'present' : null,
   });
 }
 
