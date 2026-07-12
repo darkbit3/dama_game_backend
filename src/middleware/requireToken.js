@@ -50,15 +50,23 @@ function lookupApiToken(raw) {
   return row;
 }
 
+function maskToken(token) {
+  if (typeof token !== 'string') return '';
+  const trimmed = token.trim();
+  if (!trimmed) return '';
+  if (trimmed.length <= 8) return '*'.repeat(trimmed.length);
+  return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`;
+}
+
 function logTokenMismatch(raw, req) {
   const receivedToken = typeof raw === 'string' ? raw.trim() : '';
   console.warn(`[auth] token rejected`, {
     path: req.path,
     method: req.method,
-    receivedToken,
-    headerToken: req.headers['x-api-token'] || null,
-    queryToken: req.query?.token || null,
-    queryApiToken: req.query?.apiToken || null,
+    receivedToken: maskToken(receivedToken),
+    headerToken: maskToken(req.headers['x-api-token'] || ''),
+    queryToken: maskToken(req.query?.token || ''),
+    queryApiToken: maskToken(req.query?.apiToken || ''),
     authorizationHeader: req.headers.authorization ? 'present' : null,
   });
 }

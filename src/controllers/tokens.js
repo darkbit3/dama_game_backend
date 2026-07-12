@@ -20,6 +20,37 @@ export const listTokens = (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+export function upsertTokenRegistration(targetDb = db, payload) {
+  const token = String(payload?.token || '').trim();
+  const keyName = String(payload?.key_name || '').trim();
+  const owner = String(payload?.owner || '').trim();
+  const backendUrl = String(payload?.backend_url || '').trim() || null;
+  const isActive = payload?.is_active === 0 ? 0 : 1;
+  const expiresAt = payload?.expires_at == null ? null : Number(payload.expires_at);
+
+  if (!token) {
+    throw new Error('token is required');
+  }
+
+  const existing = targetDb.prepare('SELECT id FROM api_tokens WHERE token = ?').get(token);
+  if (existing) {
+    targetDb.prepare(`
+      UPDATE api_tokens
+      SET key_name = ?, owner = ?, backend_url = ?, is_active = ?, expires_at = ?
+      WHERE token = ?
+    `).run(keyName || null, owner || null, backendUrl, isActive, expiresAt, token);
+
+    return targetDb.prepare('SELECT * FROM api_tokens WHERE token = ?').get(token);
+  }
+
+  const info = targetDb.prepare(`
+    INSERT INTO api_tokens (token, key_name, owner, backend_url, is_active, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(token, keyName || null, owner || null, backendUrl, isActive, expiresAt);
+
+  return targetDb.prepare('SELECT * FROM api_tokens WHERE id = ?').get(info.lastInsertRowid);
+}
+
 // POST /api/admin/tokens
 export const createToken = (req, res, next) => {
   try {
@@ -42,6 +73,16 @@ export const createToken = (req, res, next) => {
     const created = db.prepare('SELECT * FROM api_tokens WHERE id = ?').get(info.lastInsertRowid);
     ok(res, created, 201);
   } catch (err) { next(err); }
+};
+
+export const registerToken = (req, res, next) => {
+  try {
+    const payload = req.body || {};
+    const created = upsertTokenRegistration(db, payload);
+    ok(res, created, 201);
+  } catch (err) {
+    next(err);
+  }
 };
 
 // PATCH /api/admin/tokens/:id/toggle
